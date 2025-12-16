@@ -1,65 +1,265 @@
-import Image from "next/image";
+"use client"
 
-export default function Home() {
+import type React from "react"
+
+import { useState, useEffect, useRef } from "react"
+import { HorizontalToolbar } from "@/components/horizontal-toolbar"
+import { VerticalToolbar } from "@/components/vertical-toolbar"
+import { IsometricCanvas } from "@/components/isometric-canvas"
+import { useIndexedDB, type IsometricObject, type ProjectData } from "@/hooks/use-indexed-db"
+import { validateProjectJSON } from "@/lib/json-validator"
+import { toast } from "sonner"
+
+export default function IsometricEditor() {
+  const [objects, setObjects] = useState<IsometricObject[]>([])
+  const [selectedIds, setSelectedIds] = useState<string[]>([])
+  const [showGrid, setShowGrid] = useState(true)
+  const [clipboard, setClipboard] = useState<IsometricObject[]>([])
+  const [recentProjects, setRecentProjects] = useState<ProjectData[]>([])
+  const [currentProjectId] = useState(() => `project-${Date.now()}`)
+
+  const fileInputRef = useRef<HTMLInputElement>(null)
+  const canvasRef = useRef<HTMLCanvasElement>(null)
+
+  const { isReady, saveProject, getAllProjects, loadProject } = useIndexedDB()
+
+  useEffect(() => {
+    if (isReady) {
+      loadRecentProjects()
+    }
+  }, [isReady])
+
+  // Keyboard shortcuts
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if ((e.ctrlKey || e.metaKey) && e.key === "c") {
+        e.preventDefault()
+        handleCopy()
+      }
+      if ((e.ctrlKey || e.metaKey) && e.key === "v") {
+        e.preventDefault()
+        handlePaste()
+      }
+    }
+
+    window.addEventListener("keydown", handleKeyDown)
+    return () => window.removeEventListener("keydown", handleKeyDown)
+  }, [selectedIds, objects, clipboard])
+
+  const loadRecentProjects = async () => {
+    try {
+      const projects = await getAllProjects()
+      setRecentProjects(projects.sort((a, b) => b.updatedAt - a.updatedAt).slice(0, 10))
+    } catch (error) {
+      console.error("Failed to load recent projects", error)
+    }
+  }
+
+  const handleAddCube = () => {
+    const newCube: IsometricObject = {
+      id: `cube-${Date.now()}`,
+      type: "cube",
+      position: { x: 0, y: 0, z: 0 },
+      color: "#8b5cf6",
+      size: { width: 1, height: 1, depth: 1 },
+    }
+    setObjects([...objects, newCube])
+  }
+
+  const handleAddCylinder = (orientation: "x" | "y" | "z") => {
+    const newCylinder: IsometricObject = {
+      id: `cylinder-${Date.now()}`,
+      type: "cylinder",
+      orientation,
+      position: { x: 0, y: 0, z: 0 },
+      color: "#22c55e",
+      size: { width: 1, height: 1, depth: 1 },
+    }
+    setObjects([...objects, newCylinder])
+  }
+
+  const handleAddPyramid = () => {
+    const newPyramid: IsometricObject = {
+      id: `pyramid-${Date.now()}`,
+      type: "pyramid",
+      position: { x: 0, y: 0, z: 0 },
+      color: "#f59e0b",
+      size: { width: 1, height: 1.5, depth: 1 },
+    }
+    setObjects([...objects, newPyramid])
+  }
+
+  const handleObjectClick = (id: string, isMultiSelect: boolean) => {
+    if (isMultiSelect) {
+      setSelectedIds((prev) => (prev.includes(id) ? prev.filter((i) => i !== id) : [...prev, id]))
+    } else {
+      setSelectedIds([id])
+    }
+  }
+
+  const handleCopy = () => {
+    const selectedObjects = objects.filter((obj) => selectedIds.includes(obj.id))
+    setClipboard(selectedObjects)
+    toast.info(`${selectedObjects.length} object(s) copied to clipboard`)
+  }
+
+  const handlePaste = () => {
+    if (clipboard.length === 0) {
+      toast.error("Clipboard is empty")
+      return
+    }
+
+    const newObjects = clipboard.map((obj) => ({
+      ...obj,
+      id: `${obj.type}-${Date.now()}-${Math.random()}`,
+      position: {
+        x: obj.position.x + 1,
+        y: obj.position.y + 1,
+        z: obj.position.z,
+      },
+    }))
+
+    setObjects([...objects, ...newObjects])
+    setSelectedIds(newObjects.map((obj) => obj.id))
+
+    toast.info(`${newObjects.length} object(s) pasted`)
+  }
+
+  const handleSendBack = () => {
+    if (selectedIds.length === 0) return
+
+    setObjects((prev) => {
+      const selected = prev.filter((obj) => selectedIds.includes(obj.id))
+      const notSelected = prev.filter((obj) => !selectedIds.includes(obj.id))
+      return [...selected, ...notSelected]
+    })
+  }
+
+  const handleSendFront = () => {
+    if (selectedIds.length === 0) return
+
+    setObjects((prev) => {
+      const selected = prev.filter((obj) => selectedIds.includes(obj.id))
+      const notSelected = prev.filter((obj) => !selectedIds.includes(obj.id))
+      return [...notSelected, ...selected]
+    })
+  }
+
+  const handleSave = async () => {
+    const project: ProjectData = {
+      id: currentProjectId,
+      name: `Project ${new Date().toLocaleDateString()}`,
+      objects,
+      createdAt: Date.now(),
+      updatedAt: Date.now(),
+    }
+
+    try {
+      await saveProject(project)
+      await loadRecentProjects()
+      toast.info("Project saved successfully")
+    } catch (error) {
+      toast.error("Failed to save project")
+    }
+  }
+
+  const handleOpen = () => {
+    fileInputRef.current?.click()
+  }
+
+  const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0]
+    if (!file) return
+
+    try {
+      const text = await file.text()
+      const data = JSON.parse(text)
+      const validatedProject = validateProjectJSON(data)
+
+      if (!validatedProject) {
+        toast.error("The JSON file is not in the correct format")
+        return
+      }
+
+      setObjects(validatedProject.objects)
+      toast.info("Project loaded successfully")
+    } catch (error) {
+      toast.error("Failed to load JSON file")
+    }
+
+    // Reset input
+    if (fileInputRef.current) {
+      fileInputRef.current.value = ""
+    }
+  }
+
+  const handleExport = (type: "svg" | "png") => {
+    const project: ProjectData = {
+      id: currentProjectId,
+      name: `Project ${new Date().toLocaleDateString()}`,
+      objects,
+      createdAt: Date.now(),
+      updatedAt: Date.now(),
+    }
+
+    if (type === "svg") {
+      // For now, export as JSON since SVG generation is complex
+      const json = JSON.stringify(project, null, 2)
+      const blob = new Blob([json], { type: "application/json" })
+      const url = URL.createObjectURL(blob)
+      const a = document.createElement("a")
+      a.href = url
+      a.download = `isometric-project-${Date.now()}.json`
+      a.click()
+      URL.revokeObjectURL(url)
+
+      toast.info("Project exported as JSON (SVG coming soon)")
+    } else {
+      // PNG export would use canvas.toDataURL()
+      toast.info("PNG export will be available soon")
+    }
+  }
+
+  const handleLoadProject = async (project: ProjectData) => {
+    setObjects(project.objects)
+    setSelectedIds([])
+    toast.info(`Loaded ${project.name}`)
+  }
+
   return (
-    <div className="flex min-h-screen items-center justify-center bg-zinc-50 font-sans dark:bg-black">
-      <main className="flex min-h-screen w-full max-w-3xl flex-col items-center justify-between py-32 px-16 bg-white dark:bg-black sm:items-start">
-        <Image
-          className="dark:invert"
-          src="/next.svg"
-          alt="Next.js logo"
-          width={100}
-          height={20}
-          priority
-        />
-        <div className="flex flex-col items-center gap-6 text-center sm:items-start sm:text-left">
-          <h1 className="max-w-xs text-3xl font-semibold leading-10 tracking-tight text-black dark:text-zinc-50">
-            To get started, edit the page.tsx file.
-          </h1>
-          <p className="max-w-md text-lg leading-8 text-zinc-600 dark:text-zinc-400">
-            Looking for a starting point or more instructions? Head over to{" "}
-            <a
-              href="https://vercel.com/templates?framework=next.js&utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-              className="font-medium text-zinc-950 dark:text-zinc-50"
-            >
-              Templates
-            </a>{" "}
-            or the{" "}
-            <a
-              href="https://nextjs.org/learn?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-              className="font-medium text-zinc-950 dark:text-zinc-50"
-            >
-              Learning
-            </a>{" "}
-            center.
-          </p>
+    <div className="h-screen flex flex-col dark">
+      <input ref={fileInputRef} type="file" accept=".json" className="hidden" onChange={handleFileUpload} />
+
+      <HorizontalToolbar
+        onRecent={() => {}}
+        onOpen={handleOpen}
+        onSave={handleSave}
+        onExport={handleExport}
+        onCopy={handleCopy}
+        onPaste={handlePaste}
+        onSendBack={handleSendBack}
+        onSendFront={handleSendFront}
+        showGrid={showGrid}
+        onToggleGrid={() => setShowGrid(!showGrid)}
+        recentProjects={recentProjects}
+        onLoadProject={handleLoadProject}
+      />
+
+      <div className="flex-1 flex overflow-hidden">
+        <VerticalToolbar onAddCube={handleAddCube} onAddCylinder={handleAddCylinder} onAddPyramid={handleAddPyramid} />
+
+        <div className="flex-1 bg-background">
+          <IsometricCanvas
+            objects={objects}
+            selectedIds={selectedIds}
+            showGrid={showGrid}
+            onObjectClick={handleObjectClick}
+            onObjectsMove={(ids, deltaX, deltaY) => {
+              // Future: implement drag & drop
+            }}
+          />
         </div>
-        <div className="flex flex-col gap-4 text-base font-medium sm:flex-row">
-          <a
-            className="flex h-12 w-full items-center justify-center gap-2 rounded-full bg-foreground px-5 text-background transition-colors hover:bg-[#383838] dark:hover:bg-[#ccc] md:w-[158px]"
-            href="https://vercel.com/new?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            <Image
-              className="dark:invert"
-              src="/vercel.svg"
-              alt="Vercel logomark"
-              width={16}
-              height={16}
-            />
-            Deploy Now
-          </a>
-          <a
-            className="flex h-12 w-full items-center justify-center rounded-full border border-solid border-black/[.08] px-5 transition-colors hover:border-transparent hover:bg-black/[.04] dark:border-white/[.145] dark:hover:bg-[#1a1a1a] md:w-[158px]"
-            href="https://nextjs.org/docs?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            Documentation
-          </a>
-        </div>
-      </main>
+      </div>
     </div>
-  );
+  )
 }
