@@ -92,8 +92,15 @@ export function PropertiesPanel({ selectedObjects, onUpdateObject }: PropertiesP
                        <Input 
                          type="number" 
                          value={selectedObjects[0].position.x} 
-                         disabled
-                         className="h-8 text-xs bg-muted"
+                         onChange={(e) => {
+                            const val = parseFloat(e.target.value)
+                            if (!isNaN(val)) {
+                              onUpdateObject(selectedObjects[0].id, {
+                                position: { ...selectedObjects[0].position, x: val }
+                              })
+                            }
+                         }}
+                         className="h-8 text-xs"
                        />
                     </div>
                     <div>
@@ -101,8 +108,15 @@ export function PropertiesPanel({ selectedObjects, onUpdateObject }: PropertiesP
                        <Input 
                          type="number" 
                          value={selectedObjects[0].position.y} 
-                         disabled
-                         className="h-8 text-xs bg-muted"
+                         onChange={(e) => {
+                            const val = parseFloat(e.target.value)
+                            if (!isNaN(val)) {
+                              onUpdateObject(selectedObjects[0].id, {
+                                position: { ...selectedObjects[0].position, y: val }
+                              })
+                            }
+                         }}
+                         className="h-8 text-xs"
                        />
                     </div>
                     <div>
@@ -110,8 +124,15 @@ export function PropertiesPanel({ selectedObjects, onUpdateObject }: PropertiesP
                        <Input 
                          type="number" 
                          value={selectedObjects[0].position.z} 
-                         disabled
-                         className="h-8 text-xs bg-muted"
+                         onChange={(e) => {
+                            const val = parseFloat(e.target.value)
+                            if (!isNaN(val)) {
+                              onUpdateObject(selectedObjects[0].id, {
+                                position: { ...selectedObjects[0].position, z: val }
+                              })
+                            }
+                         }}
+                         className="h-8 text-xs"
                        />
                     </div>
                  </div>

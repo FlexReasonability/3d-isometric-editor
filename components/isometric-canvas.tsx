@@ -2,8 +2,9 @@
 
 import type React from "react"
 
-import { useEffect, useRef, useState } from "react"
+import { useEffect, useRef, useState, useImperativeHandle, forwardRef } from "react"
 import type { IsometricObject } from "@/hooks/use-indexed-db"
+import { toIsometric, toGrid, shadeColor, GRID_CELLS, GRID_SIZE } from "@/lib/isometric-math"
 
 interface IsometricCanvasProps {
   objects: IsometricObject[]
@@ -15,51 +16,11 @@ interface IsometricCanvasProps {
   onAddObject: (type: "cube", position: { x: number; y: number; z: number }) => void
 }
 
-const ISO_ANGLE = Math.PI / 6 // 30 degrees
-const GRID_SIZE = 40
-const GRID_CELLS = 15
-
-// Helper functions (Pure)
-function toIsometric(x: number, y: number, z: number) {
-  const isoX = (x - y) * Math.cos(ISO_ANGLE) * GRID_SIZE
-  const isoY = (x + y) * Math.sin(ISO_ANGLE) * GRID_SIZE - z * GRID_SIZE
-  return { x: isoX, y: isoY }
+export interface IsometricCanvasRef {
+  exportPng: () => Promise<string>
 }
 
-function toGrid(screenX: number, screenY: number) {
-  const adjX = screenX
-  const adjY = screenY
-
-  const cos = Math.cos(ISO_ANGLE) * GRID_SIZE
-  const sin = Math.sin(ISO_ANGLE) * GRID_SIZE
-
-  const y = (adjY / sin - adjX / cos) / 2
-  const x = (adjY / sin + adjX / cos) / 2
-
-  return {
-    x: Math.round(x),
-    y: Math.round(y),
-  }
-}
-
-function shadeColor(color: string, percent: number): string {
-  const num = Number.parseInt(color.replace("#", ""), 16)
-  const amt = Math.round(2.55 * percent)
-  const R = (num >> 16) + amt
-  const G = ((num >> 8) & 0x00ff) + amt
-  const B = (num & 0x0000ff) + amt
-  return (
-    "#" +
-    (
-      0x1000000 +
-      (R < 255 ? (R < 1 ? 0 : R) : 255) * 0x10000 +
-      (G < 255 ? (G < 1 ? 0 : G) : 255) * 0x100 +
-      (B < 255 ? (B < 1 ? 0 : B) : 255)
-    )
-      .toString(16)
-      .slice(1)
-  )
-}
+// Helper functions removed (imported from lib/isometric-math)
 
 function isPointInPolygon(point: { x: number; y: number }, vs: { x: number; y: number }[]) {
   let x = point.x,
@@ -185,7 +146,7 @@ function drawCube(
   }
 }
 
-export function IsometricCanvas({
+export const IsometricCanvas = forwardRef<IsometricCanvasRef, IsometricCanvasProps>(({
   objects,
   selectedIds,
   showGrid,
@@ -193,12 +154,80 @@ export function IsometricCanvas({
   onObjectsMove,
   activeTool,
   onAddObject,
-}: IsometricCanvasProps) {
+}: IsometricCanvasProps, ref) => {
   const canvasRef = useRef<HTMLCanvasElement>(null)
   const [ghostPosition, setGhostPosition] = useState<{ x: number; y: number; z: number } | null>(null)
   const [isMouseDown, setIsMouseDown] = useState(false)
   const lastPlacedPos = useRef<{ x: number; y: number; z: number } | null>(null)
   const dragStartTime = useRef<number>(0)
+
+  /* eslint-disable react-hooks/exhaustive-deps */
+  const drawScene = (
+    ctx: CanvasRenderingContext2D,
+    width: number,
+    height: number,
+    { transparentBg = false, withGrid = true, withOverlay = true } = {},
+  ) => {
+    const centerX = width / 2
+    const centerY = height / 2
+
+    ctx.clearRect(0, 0, width, height)
+    if (!transparentBg) {
+      ctx.fillStyle = "#0a0a0a"
+      ctx.fillRect(0, 0, width, height)
+    }
+
+    if (withGrid && showGrid) {
+      drawGrid(ctx, width, height)
+    }
+
+    const sortedObjects = [...objects].sort((a, b) => {
+      const depthA = a.position.x + a.position.y + a.position.z
+      const depthB = b.position.x + b.position.y + b.position.z
+      return depthA - depthB
+    })
+
+    sortedObjects.forEach((obj) => {
+      const isSelected = withOverlay && selectedIds.includes(obj.id)
+      if (obj.type === "cube") drawCube(ctx, obj, centerX, centerY, isSelected)
+    })
+
+    if (withOverlay && activeTool !== "select" && activeTool !== "eraser" && ghostPosition) {
+      const ghostObj: IsometricObject = {
+        id: "ghost",
+        type: activeTool,
+        position: { x: ghostPosition.x, y: ghostPosition.y, z: ghostPosition.z },
+        size: { width: 1, height: 1, depth: 1 },
+        color: "#ffffff",
+      }
+
+      ctx.save()
+      ctx.globalAlpha = 0.6
+      if (activeTool === "cube") drawCube(ctx, ghostObj, centerX, centerY, false)
+      ctx.restore()
+    }
+  }
+
+  useImperativeHandle(ref, () => ({
+    exportPng: async () => {
+      const canvas = canvasRef.current
+      if (!canvas) return ""
+
+      const tempCanvas = document.createElement("canvas")
+      tempCanvas.width = canvas.width
+      tempCanvas.height = canvas.height
+      const tempCtx = tempCanvas.getContext("2d")
+      if (!tempCtx) return ""
+
+      drawScene(tempCtx, tempCanvas.width, tempCanvas.height, {
+        transparentBg: true,
+        withGrid: false,
+        withOverlay: false,
+      })
+
+      return tempCanvas.toDataURL("image/png")
+    },
+  }))
 
   function getHitPosition(
     screenX: number,
@@ -268,47 +297,7 @@ export function IsometricCanvas({
     canvas.width = rect.width
     canvas.height = rect.height
 
-    const centerX = canvas.width / 2
-    const centerY = canvas.height / 2
-
-    // Clear canvas
-    ctx.fillStyle = "#0a0a0a"
-    ctx.fillRect(0, 0, canvas.width, canvas.height)
-
-    // Draw grid
-    if (showGrid) {
-      drawGrid(ctx, canvas.width, canvas.height)
-    }
-
-    // Sort objects for rendering (Back to Front: Lowest depth first)
-    // IMPORTANT: Sort by (x + y + z)
-    const sortedObjects = [...objects].sort((a, b) => {
-      const depthA = a.position.x + a.position.y + a.position.z
-      const depthB = b.position.x + b.position.y + b.position.z
-      return depthA - depthB
-    })
-
-    // Draw objects
-    sortedObjects.forEach((obj) => {
-      const isSelected = selectedIds.includes(obj.id)
-      if (obj.type === "cube") drawCube(ctx, obj, centerX, centerY, isSelected)
-    })
-
-    // Draw ghost object
-    if (activeTool !== "select" && activeTool !== "eraser" && ghostPosition) {
-      const ghostObj: IsometricObject = {
-        id: "ghost",
-        type: activeTool,
-        position: { x: ghostPosition.x, y: ghostPosition.y, z: ghostPosition.z },
-        size: { width: 1, height: 1, depth: 1 },
-        color: "rgba(255, 255, 255, 0.5)",
-      }
-
-      ctx.save()
-      ctx.globalAlpha = 0.5
-      if (activeTool === "cube") drawCube(ctx, ghostObj, centerX, centerY, false)
-      ctx.restore()
-    }
+    drawScene(ctx, canvas.width, canvas.height)
   }, [objects, selectedIds, showGrid, activeTool, ghostPosition])
 
   const handleMouseDown = (e: React.MouseEvent<HTMLCanvasElement>) => {
@@ -428,5 +417,6 @@ export function IsometricCanvas({
       onMouseLeave={handleMouseLeave}
     />
   )
-}
+})
+IsometricCanvas.displayName = "IsometricCanvas"
 

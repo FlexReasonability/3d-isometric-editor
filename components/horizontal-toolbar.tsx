@@ -1,7 +1,18 @@
 "use client"
 
 import { Button } from "@/components/ui/button"
-import { Clock, FolderOpen, Save, Download, Copy, Clipboard, ArrowDown, ArrowUp, Grid3x3, Undo2, Redo2, Pencil, Check } from "lucide-react"
+import { Clock, FolderOpen, Save, Download, Copy, Clipboard, ArrowDown, ArrowUp, Grid3x3, Undo2, Redo2, Pencil, Check, Trash2 } from "lucide-react"
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+  AlertDialogTrigger,
+} from "@/components/ui/alert-dialog"
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import { useState, useEffect } from "react"
 import type { ProjectData } from "@/hooks/use-indexed-db"
@@ -20,15 +31,12 @@ interface HorizontalToolbarProps {
   onResetTool: () => void
   onRecent: () => void
   onOpen: () => void
+  onClearProject: () => void
   onExport: (type: "svg" | "png") => void
   onUndo: () => void
   onRedo: () => void
   canUndo: boolean
   canRedo: boolean
-  onCopy: () => void
-  onPaste: () => void
-  onSendBack: () => void
-  onSendFront: () => void
   showGrid: boolean
   onToggleGrid: () => void
   recentProjects: ProjectData[]
@@ -41,15 +49,12 @@ export function HorizontalToolbar({
   onResetTool,
   onRecent,
   onOpen,
+  onClearProject,
   onExport,
   onUndo,
   onRedo,
   canUndo,
   canRedo,
-  onCopy,
-  onPaste,
-  onSendBack,
-  onSendFront,
   showGrid,
   onToggleGrid,
   recentProjects,
@@ -85,7 +90,6 @@ export function HorizontalToolbar({
           <span className="bg-gradient-to-r from-foreground to-foreground/70 bg-clip-text text-transparent">IsoEditor</span>
         </div>
         
-        <div className="w-px h-8 bg-border mx-2" />
 
         {isEditingName ? (
           <div className="flex items-center gap-1">
@@ -97,14 +101,6 @@ export function HorizontalToolbar({
               className="h-8 w-48 bg-background"
               autoFocus
             />
-            <Button 
-              variant="ghost" 
-              size="icon" 
-              className="h-8 w-8 text-green-500 hover:text-green-600 hover:bg-green-50 dark:hover:bg-green-950"
-              onMouseDown={(e) => { e.preventDefault(); handleNameSave() }} // Prevent blur from firing before click
-            >
-              <Check className="h-4 w-4" />
-            </Button>
           </div>
         ) : (
           <button
@@ -112,12 +108,14 @@ export function HorizontalToolbar({
               setIsEditingName(true)
               onResetTool()
             }}
-            className="text-sm font-medium hover:bg-accent px-3 py-1.5 rounded-md flex items-center gap-2 group transition-colors"
+            className="text-sm font-medium hover:bg-accent px-3 py-1.5 rounded-md flex items-center gap-2 group transition-colors w-48"
           >
             {projectName}
             <Pencil className="h-3 w-3 opacity-0 group-hover:opacity-50 transition-opacity" />
           </button>
         )}
+
+        <div className="w-px h-8 bg-border mx-2" />
 
         <Tooltip>
           <TooltipTrigger asChild>
@@ -144,13 +142,11 @@ export function HorizontalToolbar({
             </Button>
           </TooltipTrigger>
           <TooltipContent>
-            <p>Open JSON file</p>
+            <p>Open project</p>
           </TooltipContent>
         </Tooltip>
 
-
-
-                <Tooltip>
+        <Tooltip>
           <TooltipTrigger asChild>
             <Button variant="ghost" size="icon" onClick={() => setShowExport(true)}>
               <Download className="h-5 w-5" />
@@ -161,7 +157,6 @@ export function HorizontalToolbar({
           </TooltipContent>
         </Tooltip>
 
-        <div className="w-px h-8 bg-border mx-2" />
         <Tooltip>
           <TooltipTrigger asChild>
             <Button 
@@ -192,57 +187,7 @@ export function HorizontalToolbar({
           <TooltipContent>
             <p>Redo</p>
           </TooltipContent>
-        </Tooltip>
-
-        <div className="w-px h-8 bg-border mx-2" />
-
-        <Tooltip>
-          <TooltipTrigger asChild>
-            <Button variant="ghost" size="icon" onClick={onCopy}>
-              <Copy className="h-5 w-5" />
-            </Button>
-          </TooltipTrigger>
-          <TooltipContent>
-            <p>Copy element</p>
-          </TooltipContent>
-        </Tooltip>
-
-        <Tooltip>
-          <TooltipTrigger asChild>
-            <Button variant="ghost" size="icon" onClick={onPaste}>
-              <Clipboard className="h-5 w-5" />
-            </Button>
-          </TooltipTrigger>
-          <TooltipContent>
-            <p>Paste element</p>
-          </TooltipContent>
-        </Tooltip>
-
-        <div className="w-px h-8 bg-border mx-2" />
-
-        <Tooltip>
-          <TooltipTrigger asChild>
-            <Button variant="ghost" size="icon" onClick={onSendBack}>
-              <ArrowDown className="h-5 w-5" />
-            </Button>
-          </TooltipTrigger>
-          <TooltipContent>
-            <p>Send to back</p>
-          </TooltipContent>
-        </Tooltip>
-
-        <Tooltip>
-          <TooltipTrigger asChild>
-            <Button variant="ghost" size="icon" onClick={onSendFront}>
-              <ArrowUp className="h-5 w-5" />
-            </Button>
-          </TooltipTrigger>
-          <TooltipContent>
-            <p>Send to front</p>
-          </TooltipContent>
-        </Tooltip>
-
-        <div className="w-px h-8 bg-border mx-2" />
+        </Tooltip>        
 
         <Tooltip>
           <TooltipTrigger asChild>
@@ -259,6 +204,35 @@ export function HorizontalToolbar({
             <p>{showGrid ? "Hide grid" : "Show grid"}</p>
           </TooltipContent>
         </Tooltip>
+
+        <AlertDialog>
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <AlertDialogTrigger asChild>
+                <Button variant="ghost" size="icon" className="text-red-500 hover:text-red-600 hover:bg-red-50 dark:hover:bg-red-950/50">
+                  <Trash2 className="h-5 w-5" />
+                </Button>
+              </AlertDialogTrigger>
+            </TooltipTrigger>
+            <TooltipContent>
+              <p>Clear project</p>
+            </TooltipContent>
+          </Tooltip>
+          <AlertDialogContent>
+            <AlertDialogHeader>
+              <AlertDialogTitle>Are you sure?</AlertDialogTitle>
+              <AlertDialogDescription>
+                This will permanently delete all objects in the current project. This action cannot be undone.
+              </AlertDialogDescription>
+            </AlertDialogHeader>
+            <AlertDialogFooter>
+              <AlertDialogCancel>Cancel</AlertDialogCancel>
+              <AlertDialogAction onClick={onClearProject} className="bg-red-500 hover:bg-red-600 text-white">
+                Clear Project
+              </AlertDialogAction>
+            </AlertDialogFooter>
+          </AlertDialogContent>
+        </AlertDialog>
       </div>
 
       <Dialog open={showRecent} onOpenChange={setShowRecent}>

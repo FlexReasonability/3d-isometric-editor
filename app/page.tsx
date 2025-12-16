@@ -5,11 +5,12 @@ import type React from "react"
 import { useState, useEffect, useRef, useCallback } from "react"
 import { HorizontalToolbar } from "@/components/horizontal-toolbar"
 import { VerticalToolbar } from "@/components/vertical-toolbar"
-import { IsometricCanvas } from "@/components/isometric-canvas"
+import { IsometricCanvas, type IsometricCanvasRef } from "@/components/isometric-canvas"
 import { useIndexedDB, type IsometricObject, type ProjectData } from "@/hooks/use-indexed-db"
 import { validateProjectJSON } from "@/lib/json-validator"
 import { toast } from "sonner"
 import { PropertiesPanel } from "@/components/properties-panel"
+import { toIsometric, shadeColor } from "@/lib/isometric-math"
 
 import { useHistory } from "@/hooks/use-history"
 
@@ -34,7 +35,7 @@ export default function IsometricEditor() {
   const [activeTool, setActiveTool] = useState<"select" | "cube" | "eraser">("select")
 
   const fileInputRef = useRef<HTMLInputElement>(null)
-  const canvasRef = useRef<HTMLCanvasElement>(null)
+  const canvasRef = useRef<IsometricCanvasRef>(null)
 
   const { isReady, saveProject, getAllProjects, loadProject: loadProjectFromDB } = useIndexedDB()
 
@@ -107,16 +108,7 @@ export default function IsometricEditor() {
   // Keyboard shortcuts
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
-      // Copy
-      if ((e.ctrlKey || e.metaKey) && !e.shiftKey && e.key === "c") {
-        e.preventDefault()
-        handleCopy()
-      }
-      // Paste
-      if ((e.ctrlKey || e.metaKey) && !e.shiftKey && e.key === "v") {
-        e.preventDefault()
-        handlePaste()
-      }
+
       // Undo
       if ((e.ctrlKey || e.metaKey) && !e.shiftKey && e.key === "z") {
         e.preventDefault()
@@ -212,55 +204,7 @@ export default function IsometricEditor() {
     }
   }
 
-  const handleCopy = () => {
-    const selectedObjects = objects.filter((obj) => selectedIds.includes(obj.id))
-    setClipboard(selectedObjects)
-    if (selectedObjects.length > 0) {
-       toast.info(`${selectedObjects.length} object(s) copied to clipboard`)
-    }
-  }
 
-  const handlePaste = () => {
-    if (clipboard.length === 0) {
-      toast.error("Clipboard is empty")
-      return
-    }
-
-    const newObjects = clipboard.map((obj) => ({
-      ...obj,
-      id: `${obj.type}-${Date.now()}-${Math.random()}`,
-      position: {
-        x: obj.position.x + 1,
-        y: obj.position.y + 1,
-        z: obj.position.z,
-      },
-    }))
-
-    setObjects([...objects, ...newObjects])
-    setSelectedIds(newObjects.map((obj) => obj.id))
-
-    toast.info(`${newObjects.length} object(s) pasted`)
-  }
-
-  const handleSendBack = () => {
-    if (selectedIds.length === 0) return
-
-    setObjects((prev) => {
-      const selected = prev.filter((obj) => selectedIds.includes(obj.id))
-      const notSelected = prev.filter((obj) => !selectedIds.includes(obj.id))
-      return [...selected, ...notSelected]
-    })
-  }
-
-  const handleSendFront = () => {
-    if (selectedIds.length === 0) return
-
-    setObjects((prev) => {
-      const selected = prev.filter((obj) => selectedIds.includes(obj.id))
-      const notSelected = prev.filter((obj) => !selectedIds.includes(obj.id))
-      return [...notSelected, ...selected]
-    })
-  }
 
   const handleSave = async () => {
     const project: ProjectData = {
@@ -310,29 +254,96 @@ export default function IsometricEditor() {
     }
   }
 
-  const handleExport = (type: "svg" | "png") => {
-    const project: ProjectData = {
-      id: currentProjectId,
-      name: `Project ${new Date().toLocaleDateString()}`,
-      objects,
-      createdAt: Date.now(),
-      updatedAt: Date.now(),
-    }
+  const handleExport = async (type: "svg" | "png") => {
+    if (type === "png") {
+      if (canvasRef.current) {
+        const dataUrl = await canvasRef.current.exportPng()
+        const a = document.createElement("a")
+        a.href = dataUrl
+        a.download = `isometric-project-${Date.now()}.png`
+        a.click()
+        toast.success("Exported PNG successfully")
+      }
+    } else if (type === "svg") {
+      // Sort objects back-to-front
+      const sortedObjects = [...objects].sort((a, b) => {
+        const depthA = a.position.x + a.position.y + a.position.z
+        const depthB = b.position.x + b.position.y + b.position.z
+        return depthA - depthB
+      })
 
-    if (type === "svg") {
-      // For now, export as JSON since SVG generation is complex
-      const json = JSON.stringify(project, null, 2)
-      const blob = new Blob([json], { type: "application/json" })
+      // Calculate bounds
+      let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity
+      
+      // We need to project all vertices to find bounds
+      sortedObjects.forEach(obj => {
+         const { x, y, z } = obj.position
+         const { width: w, height: h, depth: d } = obj.size
+         const points = [
+           toIsometric(x, y, z),
+           toIsometric(x+w, y, z),
+           toIsometric(x, y+d, z),
+           toIsometric(x+w, y+d, z),
+           toIsometric(x, y, z+h),
+           toIsometric(x+w, y, z+h),
+           toIsometric(x, y+d, z+h),
+           toIsometric(x+w, y+d, z+h)
+         ]
+         points.forEach(p => {
+           minX = Math.min(minX, p.x)
+           maxX = Math.max(maxX, p.x)
+           minY = Math.min(minY, p.y)
+           maxY = Math.max(maxY, p.y)
+         })
+      })
+
+      // Add padding
+      const padding = 50
+      const width = maxX - minX + padding * 2
+      const height = maxY - minY + padding * 2
+      const offsetX = -minX + padding
+      const offsetY = -minY + padding
+
+      let svgContent = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${width} ${height}" width="${width}" height="${height}">`
+      
+      // Draw objects
+      sortedObjects.forEach(obj => {
+        const { x, y, z } = obj.position
+        const { width: w, height: h, depth: d } = obj.size
+        
+        const p1 = toIsometric(x, y, z)
+        const p2 = toIsometric(x + w, y, z)
+        const p3 = toIsometric(x + w, y + d, z)
+        const p4 = toIsometric(x, y + d, z)
+        const p5 = toIsometric(x, y, z + h)
+        const p6 = toIsometric(x + w, y, z + h)
+        const p7 = toIsometric(x + w, y + d, z + h)
+        const p8 = toIsometric(x, y + d, z + h)
+        
+        // Helper to format path
+        const path = (points: {x: number, y: number}[]) => {
+           return points.map(p => `${p.x + offsetX},${p.y + offsetY}`).join(" ")
+        }
+
+        // Top Face
+        svgContent += `<polygon points="${path([p5, p6, p7, p8])}" fill="${obj.color}" />`
+        // Left Face
+        svgContent += `<polygon points="${path([p4, p3, p7, p8])}" fill="${shadeColor(obj.color, -10)}" />`
+        // Right Face
+        svgContent += `<polygon points="${path([p2, p3, p7, p6])}" fill="${shadeColor(obj.color, -15)}" />`
+      })
+
+      svgContent += `</svg>`
+      
+      const blob = new Blob([svgContent], { type: "image/svg+xml" })
       const url = URL.createObjectURL(blob)
       const a = document.createElement("a")
       a.href = url
-      a.download = `isometric-project-${Date.now()}.json`
+      a.download = `isometric-project-${Date.now()}.svg`
       a.click()
       URL.revokeObjectURL(url)
-
-      toast.info("Project exported as JSON (SVG coming soon)")
-    } else {
-      toast.info("PNG export will be available soon")
+      
+      toast.success("Exported SVG successfully")
     }
   }
 
@@ -341,6 +352,12 @@ export default function IsometricEditor() {
     setProjectName(project.name)
     setCurrentProjectId(project.id)
     setCreatedAt(project.createdAt)
+  }
+
+  const handleClearProject = () => {
+    setObjects([])
+    setSelectedIds([])
+    toast.info("Project cleared")
   }
 
   return (
@@ -353,15 +370,13 @@ export default function IsometricEditor() {
         onResetTool={() => setActiveTool("select")}
         onRecent={() => {}}
         onOpen={handleOpen}
+        onClearProject={handleClearProject}
         onExport={handleExport}
         onUndo={undo}
         onRedo={redo}
         canUndo={canUndo}
         canRedo={canRedo}
-        onCopy={handleCopy}
-        onPaste={handlePaste}
-        onSendBack={handleSendBack}
-        onSendFront={handleSendFront}
+
         showGrid={showGrid}
         onToggleGrid={() => setShowGrid(!showGrid)}
         recentProjects={recentProjects}
@@ -377,6 +392,7 @@ export default function IsometricEditor() {
         <div className="flex-1 bg-background relative flex">
           <div className="flex-1 h-full">
             <IsometricCanvas
+              ref={canvasRef}
               objects={objects}
               selectedIds={selectedIds}
               showGrid={showGrid}
