@@ -1,17 +1,30 @@
 "use client"
 
 import { Button } from "@/components/ui/button"
-import { Clock, FolderOpen, Save, Download, Copy, Clipboard, ArrowDown, ArrowUp, Grid3x3 } from "lucide-react"
+import { Clock, FolderOpen, Save, Download, Copy, Clipboard, ArrowDown, ArrowUp, Grid3x3, Undo2, Redo2, Pencil, Check } from "lucide-react"
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog"
-import { useState } from "react"
+import { useState, useEffect } from "react"
 import type { ProjectData } from "@/hooks/use-indexed-db"
 import { ScrollArea } from "@/components/ui/scroll-area"
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from "@/components/ui/tooltip"
+import { Input } from "@/components/ui/input"
 
 interface HorizontalToolbarProps {
+  projectName: string
+  onUpdateProjectName: (name: string) => void
+  onResetTool: () => void
   onRecent: () => void
   onOpen: () => void
-  onSave: () => void
   onExport: (type: "svg" | "png") => void
+  onUndo: () => void
+  onRedo: () => void
+  canUndo: boolean
+  canRedo: boolean
   onCopy: () => void
   onPaste: () => void
   onSendBack: () => void
@@ -23,10 +36,16 @@ interface HorizontalToolbarProps {
 }
 
 export function HorizontalToolbar({
+  projectName,
+  onUpdateProjectName,
+  onResetTool,
   onRecent,
   onOpen,
-  onSave,
   onExport,
+  onUndo,
+  onRedo,
+  canUndo,
+  canRedo,
   onCopy,
   onPaste,
   onSendBack,
@@ -38,65 +57,208 @@ export function HorizontalToolbar({
 }: HorizontalToolbarProps) {
   const [showRecent, setShowRecent] = useState(false)
   const [showExport, setShowExport] = useState(false)
+  const [isEditingName, setIsEditingName] = useState(false)
+  const [tempName, setTempName] = useState(projectName)
+
+  useEffect(() => {
+    if (!isEditingName) {
+      setTempName(projectName)
+    }
+  }, [projectName, isEditingName])
+
+  const handleNameSave = () => {
+    if (tempName.trim() && tempName !== projectName) {
+      onUpdateProjectName(tempName)
+    } else {
+      setTempName(projectName) // Revert if empty or unchanged
+    }
+    setIsEditingName(false)
+  }
 
   return (
-    <>
+    <TooltipProvider>
       <div className="h-14 bg-card border-b border-border flex items-center px-4 gap-2">
-        <Button
-          variant="ghost"
-          size="icon"
-          onClick={() => {
-            onRecent()
-            setShowRecent(true)
-          }}
-          title="Recent projects"
-        >
-          <Clock className="h-5 w-5" />
-        </Button>
+        <div className="font-bold text-lg tracking-tight mr-4 flex items-center gap-2 select-none">
+          <div className="w-8 h-8 rounded bg-gradient-to-tr from-purple-600 to-blue-600 flex items-center justify-center shadow-lg transform rotate-3 hover:rotate-0 transition-all duration-300">
+             <span className="text-white font-mono text-sm font-bold">3D</span>
+          </div>
+          <span className="bg-gradient-to-r from-foreground to-foreground/70 bg-clip-text text-transparent">IsoEditor</span>
+        </div>
+        
+        <div className="w-px h-8 bg-border mx-2" />
 
-        <Button variant="ghost" size="icon" onClick={onOpen} title="Open JSON file">
-          <FolderOpen className="h-5 w-5" />
-        </Button>
+        {isEditingName ? (
+          <div className="flex items-center gap-1">
+            <Input
+              value={tempName}
+              onChange={(e) => setTempName(e.target.value)}
+              onBlur={handleNameSave}
+              onKeyDown={(e) => e.key === "Enter" && handleNameSave()}
+              className="h-8 w-48 bg-background"
+              autoFocus
+            />
+            <Button 
+              variant="ghost" 
+              size="icon" 
+              className="h-8 w-8 text-green-500 hover:text-green-600 hover:bg-green-50 dark:hover:bg-green-950"
+              onMouseDown={(e) => { e.preventDefault(); handleNameSave() }} // Prevent blur from firing before click
+            >
+              <Check className="h-4 w-4" />
+            </Button>
+          </div>
+        ) : (
+          <button
+            onClick={() => {
+              setIsEditingName(true)
+              onResetTool()
+            }}
+            className="text-sm font-medium hover:bg-accent px-3 py-1.5 rounded-md flex items-center gap-2 group transition-colors"
+          >
+            {projectName}
+            <Pencil className="h-3 w-3 opacity-0 group-hover:opacity-50 transition-opacity" />
+          </button>
+        )}
 
-        <Button variant="ghost" size="icon" onClick={onSave} title="Save project">
-          <Save className="h-5 w-5" />
-        </Button>
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <Button
+              variant="ghost"
+              size="icon"
+              onClick={() => {
+                onRecent()
+                setShowRecent(true)
+              }}
+            >
+              <Clock className="h-5 w-5" />
+            </Button>
+          </TooltipTrigger>
+          <TooltipContent>
+            <p>Recent projects</p>
+          </TooltipContent>
+        </Tooltip>
 
-        <Button variant="ghost" size="icon" onClick={() => setShowExport(true)} title="Export">
-          <Download className="h-5 w-5" />
-        </Button>
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <Button variant="ghost" size="icon" onClick={onOpen}>
+              <FolderOpen className="h-5 w-5" />
+            </Button>
+          </TooltipTrigger>
+          <TooltipContent>
+            <p>Open JSON file</p>
+          </TooltipContent>
+        </Tooltip>
+
+
+
+                <Tooltip>
+          <TooltipTrigger asChild>
+            <Button variant="ghost" size="icon" onClick={() => setShowExport(true)}>
+              <Download className="h-5 w-5" />
+            </Button>
+          </TooltipTrigger>
+          <TooltipContent>
+            <p>Export</p>
+          </TooltipContent>
+        </Tooltip>
+
+        <div className="w-px h-8 bg-border mx-2" />
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <Button 
+              variant="ghost" 
+              size="icon" 
+              onClick={onUndo} 
+              disabled={!canUndo} 
+            >
+              <Undo2 className="h-5 w-5" />
+            </Button>
+          </TooltipTrigger>
+          <TooltipContent>
+            <p>Undo</p>
+          </TooltipContent>
+        </Tooltip>
+
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <Button 
+              variant="ghost" 
+              size="icon" 
+              onClick={onRedo} 
+              disabled={!canRedo} 
+            >
+              <Redo2 className="h-5 w-5" />
+            </Button>
+          </TooltipTrigger>
+          <TooltipContent>
+            <p>Redo</p>
+          </TooltipContent>
+        </Tooltip>
 
         <div className="w-px h-8 bg-border mx-2" />
 
-        <Button variant="ghost" size="icon" onClick={onCopy} title="Copy element">
-          <Copy className="h-5 w-5" />
-        </Button>
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <Button variant="ghost" size="icon" onClick={onCopy}>
+              <Copy className="h-5 w-5" />
+            </Button>
+          </TooltipTrigger>
+          <TooltipContent>
+            <p>Copy element</p>
+          </TooltipContent>
+        </Tooltip>
 
-        <Button variant="ghost" size="icon" onClick={onPaste} title="Paste element">
-          <Clipboard className="h-5 w-5" />
-        </Button>
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <Button variant="ghost" size="icon" onClick={onPaste}>
+              <Clipboard className="h-5 w-5" />
+            </Button>
+          </TooltipTrigger>
+          <TooltipContent>
+            <p>Paste element</p>
+          </TooltipContent>
+        </Tooltip>
 
         <div className="w-px h-8 bg-border mx-2" />
 
-        <Button variant="ghost" size="icon" onClick={onSendBack} title="Send to back">
-          <ArrowDown className="h-5 w-5" />
-        </Button>
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <Button variant="ghost" size="icon" onClick={onSendBack}>
+              <ArrowDown className="h-5 w-5" />
+            </Button>
+          </TooltipTrigger>
+          <TooltipContent>
+            <p>Send to back</p>
+          </TooltipContent>
+        </Tooltip>
 
-        <Button variant="ghost" size="icon" onClick={onSendFront} title="Send to front">
-          <ArrowUp className="h-5 w-5" />
-        </Button>
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <Button variant="ghost" size="icon" onClick={onSendFront}>
+              <ArrowUp className="h-5 w-5" />
+            </Button>
+          </TooltipTrigger>
+          <TooltipContent>
+            <p>Send to front</p>
+          </TooltipContent>
+        </Tooltip>
 
         <div className="w-px h-8 bg-border mx-2" />
 
-        <Button
-          variant="ghost"
-          size="icon"
-          onClick={onToggleGrid}
-          title={showGrid ? "Hide grid" : "Show grid"}
-          className={showGrid ? "bg-accent" : ""}
-        >
-          <Grid3x3 className="h-5 w-5" />
-        </Button>
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <Button
+              variant="ghost"
+              size="icon"
+              onClick={onToggleGrid}
+              className={showGrid ? "bg-accent" : ""}
+            >
+              <Grid3x3 className="h-5 w-5" />
+            </Button>
+          </TooltipTrigger>
+          <TooltipContent>
+            <p>{showGrid ? "Hide grid" : "Show grid"}</p>
+          </TooltipContent>
+        </Tooltip>
       </div>
 
       <Dialog open={showRecent} onOpenChange={setShowRecent}>
@@ -119,7 +281,7 @@ export function HorizontalToolbar({
                       setShowRecent(false)
                     }}
                   >
-                    <div className="font-medium">{project.name}</div>
+                    <div className="font-medium">{project.name || "Untitled Project"}</div>
                     <div className="text-xs text-muted-foreground">
                       {new Date(project.updatedAt).toLocaleDateString()} - {project.objects.length} objects
                     </div>
@@ -159,6 +321,6 @@ export function HorizontalToolbar({
           </div>
         </DialogContent>
       </Dialog>
-    </>
+    </TooltipProvider>
   )
 }

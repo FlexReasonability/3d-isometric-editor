@@ -1,59 +1,69 @@
-"use client"
-
 import { Button } from "@/components/ui/button"
-import { Box, CylinderIcon, Triangle } from "lucide-react"
-import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover"
+import { Box, MousePointer2, Eraser } from "lucide-react"
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from "@/components/ui/tooltip"
 
 interface VerticalToolbarProps {
-  onAddCube: () => void
-  onAddCylinder: (orientation: "x" | "y" | "z") => void
-  onAddPyramid: () => void
+  activeTool: "select" | "cube" | "eraser"
+  onSelectTool: (tool: "select" | "cube" | "eraser") => void
 }
 
-export function VerticalToolbar({ onAddCube, onAddCylinder, onAddPyramid }: VerticalToolbarProps) {
+export function VerticalToolbar({ activeTool, onSelectTool }: VerticalToolbarProps) {
   return (
-    <div className="w-16 bg-card border-r border-border flex flex-col items-center py-4 gap-2">
-      <Button variant="ghost" size="icon" onClick={onAddCube} title="Add isometric cube" className="w-12 h-12">
-        <Box className="h-6 w-6" />
-      </Button>
+    <TooltipProvider>
+      <div className="w-16 bg-card border-r border-border flex flex-col items-center py-4 gap-2">
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <Button 
+              variant="ghost" 
+              size="icon" 
+              onClick={() => onSelectTool("select")} 
+              className={`w-12 h-12 ${activeTool === "select" ? "bg-accent text-accent-foreground" : ""}`}
+            >
+              <MousePointer2 className="h-6 w-6" />
+            </Button>
+          </TooltipTrigger>
+          <TooltipContent side="right">
+            <p>Select Tool</p>
+          </TooltipContent>
+        </Tooltip>
+        
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <Button 
+              variant="ghost" 
+              size="icon" 
+              onClick={() => onSelectTool("cube")} 
+              className={`w-12 h-12 ${activeTool === "cube" ? "bg-accent text-accent-foreground" : ""}`}
+            >
+              <Box className="h-6 w-6" />
+            </Button>
+          </TooltipTrigger>
+          <TooltipContent side="right">
+            <p>Add Cube</p>
+          </TooltipContent>
+        </Tooltip>
 
-      <Popover>
-        <PopoverTrigger asChild>
-          <Button variant="ghost" size="icon" title="Add isometric cylinder" className="w-12 h-12">
-            <CylinderIcon className="h-6 w-6" />
-          </Button>
-        </PopoverTrigger>
-        <PopoverContent side="right" className="w-48">
-          <div className="space-y-2">
-            <p className="text-sm font-medium mb-3">Cylinder Orientation</p>
-            <Button
-              variant="outline"
-              className="w-full justify-start bg-transparent"
-              onClick={() => onAddCylinder("x")}
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <Button 
+              variant="ghost" 
+              size="icon" 
+              onClick={() => onSelectTool("eraser")} 
+              className={`w-12 h-12 ${activeTool === "eraser" ? "bg-accent text-accent-foreground" : ""}`}
             >
-              X Axis
+              <Eraser className="h-6 w-6" />
             </Button>
-            <Button
-              variant="outline"
-              className="w-full justify-start bg-transparent"
-              onClick={() => onAddCylinder("y")}
-            >
-              Y Axis (Vertical)
-            </Button>
-            <Button
-              variant="outline"
-              className="w-full justify-start bg-transparent"
-              onClick={() => onAddCylinder("z")}
-            >
-              Z Axis
-            </Button>
-          </div>
-        </PopoverContent>
-      </Popover>
-
-      <Button variant="ghost" size="icon" onClick={onAddPyramid} title="Add isometric pyramid" className="w-12 h-12">
-        <Triangle className="h-6 w-6" />
-      </Button>
-    </div>
+          </TooltipTrigger>
+          <TooltipContent side="right">
+            <p>Eraser</p>
+          </TooltipContent>
+        </Tooltip>
+      </div>
+    </TooltipProvider>
   )
 }
