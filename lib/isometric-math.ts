@@ -1,6 +1,6 @@
 export const ISO_ANGLE = Math.PI / 6 // 30 degrees
-export const GRID_SIZE = 40
-export const GRID_CELLS = 15
+export const GRID_SIZE = 20
+export const GRID_CELLS = 30
 
 export function toIsometric(x: number, y: number, z: number) {
   const isoX = (x - y) * Math.cos(ISO_ANGLE) * GRID_SIZE
