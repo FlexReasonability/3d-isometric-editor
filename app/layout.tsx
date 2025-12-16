@@ -15,7 +15,7 @@ const geistMono = Geist_Mono({
 
 export const metadata: Metadata = {
   title: "Isometric Editor",
-  description: "Isometric editor",
+  description: "12/16/2025 GNN lecture was fun",
 };
 
 export default function RootLayout({
