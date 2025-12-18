@@ -23,7 +23,7 @@ I used it only once… to create **THE TRUCK 🛻**.
 ## Tech Stack
 - Node 22+
 - Next.js `v16.0.10`
-- Hosted on ![Vercel](https://vercel.com/)  
+- Hosted on https://vercel.com/
   
 ---
 
