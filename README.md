@@ -8,7 +8,7 @@ https://3d-isometric-editor.vercel.app/
 
 I used it only once… to create **THE TRUCK 🛻**.
 
-![The Truck](./public/truck.svg)
+![The Truck](./public/truck2.svg)
 
 ---
 
