@@ -6,7 +6,7 @@ I found a tool on the web, created my asset… and when it was time to export, t
 So I decided to build my own tool:  
 https://3d-isometric-editor.vercel.app/
 
-I used it only once… to create **THE TRUCK 🛻**.
+I used it only once… to create **THE TRUCK**.
 
 ![The Truck](./public/truck2.svg)
 
